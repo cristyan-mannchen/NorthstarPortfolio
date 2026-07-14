@@ -1,4 +1,4 @@
-import type { ColumnMapping, DatasetType, NormalizedImportRecord, NormalizedTransactionType, ParsedRow } from "./types";
+import type { ColumnMapping, DatasetType, NormalizedImportRecord, NormalizedTransactionType, ParsedRow, TransactionTypeRule } from "./types";
 
 const TRANSACTION_ALIASES: Record<NormalizedTransactionType, string[]> = {
   buy: ["buy", "bought", "purchase", "investment", "subscription", "contribution purchase"], sell: ["sell", "sold", "sale", "redemption"],
@@ -8,8 +8,13 @@ const TRANSACTION_ALIASES: Record<NormalizedTransactionType, string[]> = {
   transfer_in: ["transfer in", "journal in"], transfer_out: ["transfer out", "journal out"], return_of_capital: ["return of capital", "roc"],
   split: ["split", "stock split"], opening_position: ["opening position"], other: ["other", "journal"],
 };
-export function normalizeTransactionType(value: unknown) {
+export function normalizeTransactionType(value: unknown, inferredRules: TransactionTypeRule[] = []) {
   const normalized = String(value ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  const inferred = inferredRules
+    .flatMap((rule) => rule.sourceTerms.map((term) => ({ rule, term: term.trim().toLowerCase().replace(/[_-]+/g, " ") })))
+    .filter(({ term }) => term && (normalized === term || normalized.includes(term)))
+    .sort((left, right) => right.term.length - left.term.length)[0];
+  if (inferred) return { type: inferred.rule.normalizedType, confidence: inferred.rule.confidence };
   let best: { type: NormalizedTransactionType; alias: string } | null = null;
   for (const [type, aliases] of Object.entries(TRANSACTION_ALIASES) as [NormalizedTransactionType, string[]][]) {
     for (const alias of aliases) if ((normalized === alias || normalized.includes(alias)) && (!best || alias.length > best.alias.length)) best = { type, alias };
@@ -71,12 +76,12 @@ export function parseFinancialDate(value: unknown, preference?: "mdy" | "dmy") {
   return { value: date.toISOString().slice(0, 10), confidence: first > 12 || second > 12 ? 0.95 : 0.75 };
 }
 
-export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetType: DatasetType, worksheet: string, decimalSeparator: "." | "," = ".", defaultCurrency?: string): NormalizedImportRecord {
+export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetType: DatasetType, worksheet: string, decimalSeparator: "." | "," = ".", defaultCurrency?: string, transactionTypeRules: TransactionTypeRule[] = []): NormalizedImportRecord {
   const values = new Map(mappings.map((mapping) => [mapping.targetField, row.cells[mapping.sourceColumnIndex]?.rawValue]));
   const quantity = parseFinancialNumber(values.get("quantity"), decimalSeparator);
   const bookValue = parseFinancialNumber(values.get("book_value"), decimalSeparator);
   const unitPrice = parseFinancialNumber(values.get("unit_price"), decimalSeparator);
-  const transaction = normalizeTransactionType(values.get("transaction_type"));
+  const transaction = normalizeTransactionType(values.get("transaction_type"), transactionTypeRules);
   const statedTradeDate = parseFinancialDate(values.get("trade_date"));
   const statedSettlementDate = parseFinancialDate(values.get("settlement_date"));
   const derivedFields: string[] = [];

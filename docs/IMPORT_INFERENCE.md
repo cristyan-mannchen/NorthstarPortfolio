@@ -12,4 +12,6 @@ Deterministic inference runs first and remains functional without an AI provider
 
 Adaptive profiles are user-scoped. Header Jaccard similarity permits reordered columns and optional additions; profile mappings are rebound to current column indexes. Corrections are never shared globally.
 
-`ImportInferenceProvider` is the vendor-neutral AI extension. Any provider receives only masked headers, representative samples, worksheet names, and type summaries. Its output must pass the Zod schema before use, and it can never bypass deterministic validation. No AI provider or environment variable is required in this release.
+`ImportInferenceProvider` is the vendor-neutral AI extension. Groq is supported through the optional server-only `GROQ_API_KEY` and `GROQ_MODEL` environment variables. AI assistance runs when deterministic confidence is below the high-confidence threshold or when transaction labels are unfamiliar.
+
+Only structural samples are sent: account numbers are masked, numeric values become type placeholders, and account/name/description/symbol fields become `<text>`. The provider returns schema-constrained JSON. Source columns are rebound to real headers, confidence is capped, and every resulting row must still pass deterministic validation and user review. Provider errors, timeouts, invalid JSON, and rate limits fall back to deterministic inference; AI can never confirm or write transactions.
