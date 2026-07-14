@@ -1,0 +1,3 @@
+Trade Date|Activity|Symbol|Description|Quantity|Unit Price|Gross Amount|Fees|Net Amount|Currency|Reference
+2026-01-15|Purchase|RY|Royal Bank of Canada|10|145.00|1450.00|9.95|1459.95|CAD|EXAMPLE-001
+2026-03-31|Dividend|RY|Quarterly dividend|||15.00|0|15.00|CAD|EXAMPLE-002

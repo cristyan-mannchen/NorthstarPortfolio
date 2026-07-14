@@ -11,6 +11,8 @@ export async function GET(request: Request) {
   }
 
   const db = createAdminClient();
+  // Cascading deletes remove staged raw import data after its retention window.
+  await db.from("import_batches").delete().lt("expires_at", new Date().toISOString());
   const { data: instruments, error } = await db.from("instruments").select("id,symbol").eq("is_active", true);
   if (error) throw error;
   const results = await Promise.allSettled((instruments ?? []).map(async (instrument) => {

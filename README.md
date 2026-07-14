@@ -13,11 +13,13 @@ Production-oriented investment tracking for Canadian mutual funds, ETFs, and sto
 
 The responsive UI includes light/dark themes, summary metrics, portfolio history, allocation, performance highlights, holdings, time ranges, and an add-investment workflow.
 
+The intelligent importer accepts CSV, TXT, XLSX, and legacy XLS files, infers unfamiliar structures, stages normalized financial records for review, validates them deterministically, detects duplicates, and confirms imports atomically. It remains functional without an AI provider.
+
 ## Local setup
 
 1. Install Node.js 22 and clone the repository.
 2. Copy `.env.example` to `.env.local`.
-3. Create a Supabase project and run `supabase/migrations/202607130001_initial_schema.sql` in its SQL editor.
+3. Create a Supabase project and run every SQL file in `supabase/migrations/` in filename order.
 4. Add the Supabase URL, anon key, service role key, and a random cron secret.
 5. Install and run:
 
@@ -60,6 +62,8 @@ npm run build
 ```
 
 API details are in [`docs/API.md`](docs/API.md). The SQL migration is the canonical schema. For backups, use Supabase scheduled backups where available or a periodic encrypted `pg_dump` to private object storage.
+
+Importer design and operations are documented in [`docs/INTELLIGENT_IMPORTER.md`](docs/INTELLIGENT_IMPORTER.md), [`docs/IMPORT_SECURITY.md`](docs/IMPORT_SECURITY.md), and [`docs/IMPORT_INFERENCE.md`](docs/IMPORT_INFERENCE.md).
 
 ## Roadmap
 

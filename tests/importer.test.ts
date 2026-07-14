@@ -7,6 +7,7 @@ import { analyzeStructure, inferColumn } from "../lib/importer/inference";
 import { detectNumberFormat, normalizeRow, normalizeTransactionType, parseFinancialDate, parseFinancialNumber } from "../lib/importer/normalize";
 import { assertSafeUpload, sanitizeCellValue, structuralSignature } from "../lib/importer/security";
 import { validateRecord } from "../lib/importer/validation";
+import { headerSimilarity, rebindMappings } from "../lib/importer/profiles";
 import type { UploadedInvestmentFile } from "../lib/importer/types";
 
 function textFile(text: string, filename = "activity.csv"): UploadedInvestmentFile {
@@ -29,6 +30,7 @@ test("supports UTF-8 BOM and decimal comma inference", async () => {
   assert.equal(dataset.encoding, "utf-8-bom");
   assert.equal(detectNumberFormat(["1.234,56", "20,50"]).decimalSeparator, ",");
   assert.equal(parseFinancialNumber("1.234,56", ","), 1234.56);
+  assert.equal(parseFinancialNumber(sanitizeCellValue("-1,234.56")), -1234.56);
 });
 
 test("detects a header after report metadata and classifies totals", async () => {
@@ -65,6 +67,7 @@ test("normalizes aliases, holdings, dates, and derived average cost", async () =
   const record = normalizeRow(analysis.sheet.rows[1], analysis.schema.mappings, "positions", analysis.sheet.name);
   assert.equal(record.transactionType, "opening_position");
   assert.equal(record.unitPrice, 100);
+  assert.ok(record.tradeDate);
   assert.deepEqual(record.derivedFields, ["unit_price_from_book_value"]);
 });
 
@@ -87,4 +90,11 @@ test("structural signatures exclude confidential values", async () => {
   const first = await parser.parse(textFile("Symbol,Units\nRY,10\n"));
   const second = await parser.parse(textFile("Symbol,Units\nAAPL,9999\n"));
   assert.equal(structuralSignature(first), structuralSignature(second));
+});
+
+test("adaptive profiles survive column reordering and optional columns", () => {
+  assert.ok(headerSimilarity(["Symbol", "Units", "Price"], ["price", "Symbol", "Units", "Notes"]) >= 0.75);
+  const rebound = rebindMappings([{ sourceColumnIndex: 0, sourceColumn: "Symbol", targetField: "symbol", confidence: .9, reasoningCode: "EXACT_ALIAS" }], ["Units", "Symbol"]);
+  assert.equal(rebound[0].sourceColumnIndex, 1);
+  assert.equal(rebound[0].reasoningCode, "ADAPTIVE_PROFILE");
 });
