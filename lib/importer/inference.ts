@@ -4,7 +4,7 @@ const FIELD_ALIASES: Record<NormalizedImportField, string[]> = {
   account_name: ["account name", "account"], account_number_masked: ["account number", "account no", "acct"],
   portfolio_name: ["portfolio", "portfolio name"], institution_name: ["institution", "broker", "dealer"],
   symbol: ["symbol", "ticker", "fund code", "security code", "asset"], provider_symbol: ["provider symbol"],
-  instrument_name: ["security name", "instrument", "investment name", "description", "asset name", "fund name"],
+  instrument_name: ["security name", "symbol description", "instrument", "investment name", "asset name", "fund name"],
   instrument_type: ["asset type", "security type", "instrument type", "category"], exchange: ["exchange", "market"],
   currency: ["currency", "ccy", "curr"], transaction_type: ["transaction type", "activity", "action", "type", "transaction"],
   trade_date: ["trade date", "transaction date", "date", "activity date"], settlement_date: ["settlement date", "settle date"],
@@ -13,7 +13,7 @@ const FIELD_ALIASES: Record<NormalizedImportField, string[]> = {
   taxes: ["taxes", "tax", "withholding tax"], net_amount: ["net amount", "net", "total amount"],
   book_value: ["book value", "cost basis", "adjusted cost base", "cost"], market_value: ["market value", "current value", "value"],
   exchange_rate: ["exchange rate", "fx rate", "conversion rate"], external_reference: ["reference", "transaction id", "activity id", "confirmation"],
-  description: ["memo", "details", "transaction description", "narrative"], notes: ["notes", "note", "comments"],
+  description: ["description", "memo", "details", "transaction description", "narrative"], notes: ["notes", "note", "comments"],
 };
 
 function normalizeHeader(value: unknown) { return String(value ?? "").trim().toLowerCase().replace(/[_\-]+/g, " ").replace(/\s+/g, " "); }
@@ -81,13 +81,19 @@ export function analyzeStructure(dataset: ParsedDataset) {
     sheet.detectedHeaderRow = headerRow?.sourceRowNumber;
     sheet.detectedDataStartRow = sheet.rows[header.dataStartRowIndex]?.sourceRowNumber;
     sheet.confidence = header.confidence;
-    const mappings = headerValues.flatMap((sourceColumn, sourceColumnIndex) => {
+    let mappings = headerValues.flatMap((sourceColumn, sourceColumnIndex) => {
       const types = sheet.rows.slice(header.dataStartRowIndex, header.dataStartRowIndex + 20).map((row) => row.cells[sourceColumnIndex]?.inferredPrimitiveType ?? "empty");
       const inferred = inferColumn(sourceColumn, types);
       return inferred ? [{ sourceColumnIndex, sourceColumn, ...inferred }] : [];
     });
+    const inferredDatasetType = datasetType(mappings);
+    if (["transactions", "mixed"].includes(inferredDatasetType)) {
+      mappings = mappings.map((mapping) => mapping.sourceColumn === "value" && mapping.targetField === "market_value"
+        ? { ...mapping, targetField: "net_amount", reasoningCode: "TRANSACTION_VALUE" }
+        : mapping);
+    }
     const mappingConfidence = mappings.length ? mappings.reduce((sum, mapping) => sum + mapping.confidence, 0) / mappings.length : 0;
-    const schema: InferredImportSchema = { datasetType: datasetType(mappings), headerRow: headerRow?.sourceRowNumber ?? 1, dataStartRow: sheet.rows[header.dataStartRowIndex]?.sourceRowNumber ?? 2, mappings, transactionTypeRules: [], warnings: [], overallConfidence: header.confidence * 0.45 + mappingConfidence * 0.55 };
+    const schema: InferredImportSchema = { datasetType: inferredDatasetType, headerRow: headerRow?.sourceRowNumber ?? 1, dataStartRow: sheet.rows[header.dataStartRowIndex]?.sourceRowNumber ?? 2, mappings, transactionTypeRules: [], warnings: [], overallConfidence: header.confidence * 0.45 + mappingConfidence * 0.55 };
     if (schema.datasetType === "unknown") schema.warnings.push("Dataset type could not be determined.");
     return { sheet, schema };
   });

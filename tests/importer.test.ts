@@ -90,6 +90,29 @@ test("imports only buy and dividend transaction activities", () => {
   assert.equal(shouldImportRecord({ datasetType: "transactions", transactionType: "fee" }), false);
 });
 
+test("normalizes the RBC Activity Export CSV layout", async () => {
+  const csv = `"Activity Export as of Jul 13, 2026 at 11:34:04 pm ET"\n\n"Account: 69227485 - Group RRSP"\n\n"Trades this month: 0"\n\n"69 Activities"\n\n"Date","Activity","Symbol","Symbol Description","Quantity","Price","Settlement Date","Account","Value","Currency","Description"\n"July 8, 2026","Deposits & Contributions","","","","","July 8, 2026","69227485","265.09","CAD","CON - ROYAL CHOICES PLAN CONTRIB"\n"June 30, 2026","Dividends","RBF902","RBC U.S. DIVIDEND FUND CL F (902)","0.713","","July 2, 2026","69227485","0","CAD","DIV - RBC U.S. DIVIDEND FUND CL F (902) AS OF 06/30/26 REINVEST @ $48.7932"\n"June 29, 2026","Buy","RBF902","RBC U.S. DIVIDEND FUND CL F (902)","5.43","48.8213","June 30, 2026","69227485","-265.09","CAD","RBC U.S. DIVIDEND FUND CL F (902) UNSOL. AS OF 06/29/26"\n`;
+  const dataset = await new DelimitedTextParser().parse(textFile(csv, "Activity 69227485 July 13, 2026.csv"));
+  const [analysis] = analyzeStructure(dataset);
+  assert.equal(analysis.sheet.detectedHeaderRow, 9);
+  assert.equal(analysis.schema.datasetType, "transactions");
+  assert.equal(analysis.schema.mappings.find((mapping) => mapping.sourceColumn === "symbol description")?.targetField, "instrument_name");
+  assert.equal(analysis.schema.mappings.find((mapping) => mapping.sourceColumn === "description")?.targetField, "description");
+  assert.equal(analysis.schema.mappings.find((mapping) => mapping.sourceColumn === "value")?.targetField, "net_amount");
+
+  const records = analysis.sheet.rows
+    .filter((row) => row.sourceRowNumber >= analysis.schema.dataStartRow && row.rowType === "data")
+    .map((row) => normalizeRow(row, analysis.schema.mappings, "transactions", analysis.sheet.name))
+    .filter(shouldImportRecord);
+  assert.equal(records.length, 2);
+  assert.equal(records[0].transactionType, "dividend");
+  assert.equal(records[0].tradeDate, "2026-07-02");
+  assert.equal(records[0].instrumentName, "RBC U.S. DIVIDEND FUND CL F (902)");
+  assert.match(records[0].description ?? "", /REINVEST/);
+  assert.equal(records[1].tradeDate, "2026-06-30");
+  assert.equal(records[1].netAmount, -265.09);
+});
+
 test("validates reconciliation and required fields deterministically", () => {
   const record = validateRecord({ sourceWorksheet: "Data", sourceRowNumber: 2, datasetType: "transactions", importMode: "historical_transaction", symbol: "RY", transactionType: "buy", tradeDate: "2026-07-13", quantity: 10, unitPrice: 100, grossAmount: 900, currency: "CAD", derivedFields: [], rawData: {} }, 0.95, "portfolio");
   assert.ok(record.validationWarnings.some((warning) => warning.includes("reconcile")));
