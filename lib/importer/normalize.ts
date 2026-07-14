@@ -35,6 +35,18 @@ export function parseFinancialDate(value: unknown, preference?: "mdy" | "dmy") {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return { value: value.toISOString().slice(0, 10), confidence: 1 };
   const raw = String(value ?? "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { value: raw, confidence: 1 };
+  const monthFirstMatch = /^([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})$/.exec(raw);
+  if (monthFirstMatch) {
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const month = monthNames.indexOf(monthFirstMatch[1].slice(0, 3).toLowerCase()) + 1;
+    const day = Number(monthFirstMatch[2]);
+    const year = Number(monthFirstMatch[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (month > 0 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+      return { value: date.toISOString().slice(0, 10), confidence: 1 };
+    }
+    return { value: undefined, confidence: 0 };
+  }
   const namedMonthMatch = /^(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s](\d{2,4})$/.exec(raw);
   if (namedMonthMatch) {
     const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
