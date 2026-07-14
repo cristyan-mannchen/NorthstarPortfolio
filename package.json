@@ -10,7 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --import tsx --test tests/*.test.mjs tests/*.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
@@ -31,6 +31,7 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "4.2.1",
+    "tsx": "^4.23.1",
     "typescript": "5.9.3"
   },
   "type": "module"
