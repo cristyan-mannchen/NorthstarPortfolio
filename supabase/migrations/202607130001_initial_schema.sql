@@ -58,3 +58,28 @@ create policy "own positions" on public.positions for all using (exists(select 1
 create policy "read instruments" on public.instruments for select to authenticated using (true);
 create policy "read prices" on public.price_history for select to authenticated using (true);
 create policy "own snapshots" on public.portfolio_snapshots for select using (exists(select 1 from public.portfolios p where p.id = portfolio_id and p.owner_id = auth.uid()));
+
+-- Create the application profile atomically whenever Supabase Auth creates a user.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (new.id, coalesce(new.raw_user_meta_data ->> 'full_name', new.email));
+  return new;
+end;
+$$;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- Automatic table exposure is disabled at project level. Grant only the
+-- authenticated operations used by the app; RLS remains the authorization gate.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update, delete on public.portfolios to authenticated;
+grant select, insert, update, delete on public.positions to authenticated;
+grant select on public.instruments, public.price_history, public.portfolio_snapshots to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
