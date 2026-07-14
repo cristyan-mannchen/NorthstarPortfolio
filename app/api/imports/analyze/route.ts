@@ -26,7 +26,16 @@ export async function POST(request: Request) {
     assertSafeUpload(file);
     const hash = fileHash(bytes);
     const existing = await db.from("import_batches").select("id,status").eq("user_id", user.id).eq("portfolio_id", portfolio.data.id).eq("file_hash", hash).maybeSingle();
-    if (existing.data) return NextResponse.json({ batchId: existing.data.id, status: existing.data.status, repeatedUpload: true });
+    if (existing.data && ["completed", "completed_with_warnings"].includes(existing.data.status)) {
+      return NextResponse.json({ batchId: existing.data.id, status: existing.data.status, repeatedUpload: true });
+    }
+    // A repeated, unfinished upload is analyzed again so parser improvements do
+    // not strand the user on stale staged rows. Cascading deletes remove only
+    // this user's unconfirmed review data; completed imports remain idempotent.
+    if (existing.data) {
+      const removed = await db.from("import_batches").delete().eq("id", existing.data.id);
+      if (removed.error) throw new Error(`Unable to refresh the previous analysis: ${removed.error.message}`);
+    }
 
     const dataset = await parseInvestmentFile(file);
     const analysis = await analyzeParsedDataset(dataset, upload.name, portfolio.data.id, db);

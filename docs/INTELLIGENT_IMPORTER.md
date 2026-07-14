@@ -13,7 +13,9 @@ CSV and TXT support comma, semicolon, tab, and pipe delimiters, quotes, UTF-8/BO
 5. Skip invalid rows or correct the source file and upload again.
 6. Confirm once all remaining rows pass validation.
 
-Confirmation is atomic and idempotent. Re-uploading the identical file returns the existing batch; repeated confirmation returns the completed result.
+Confirmation is atomic and idempotent. Re-uploading an identical, completed file returns the existing batch; an unfinished batch is reanalyzed so importer improvements can replace stale staged results. Repeated confirmation returns the completed result.
+
+For transaction exports, Northstar stages only `buy` and `dividend` activities. When both a trade date and settlement date are supplied, the settlement date is the effective performance date. RBC-style dates such as `02-Jul-26` are supported.
 
 ## Confidence
 
