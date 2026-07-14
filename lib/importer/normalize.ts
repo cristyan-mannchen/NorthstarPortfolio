@@ -56,6 +56,8 @@ export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetT
   const derivedFields: string[] = [];
   let averagePrice = unitPrice;
   if (averagePrice == null && bookValue != null && quantity) { averagePrice = bookValue / quantity; derivedFields.push("unit_price_from_book_value"); }
+  const tradeDate = date.value ?? (datasetType === "positions" ? new Date().toISOString().slice(0, 10) : undefined);
+  if (!date.value && datasetType === "positions") derivedFields.push("trade_date_from_import_date");
   return {
     sourceWorksheet: worksheet, sourceRowNumber: row.sourceRowNumber, datasetType,
     importMode: datasetType === "positions" ? "opening_position" : "historical_transaction",
@@ -64,7 +66,7 @@ export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetT
     instrumentType: String(values.get("instrument_type") ?? "").trim() || undefined,
     currency: String(values.get("currency") ?? "").trim().toUpperCase() || undefined,
     transactionType: datasetType === "positions" ? "opening_position" : transaction.type,
-    tradeDate: date.value, settlementDate: parseFinancialDate(values.get("settlement_date")).value,
+    tradeDate, settlementDate: parseFinancialDate(values.get("settlement_date")).value,
     quantity, unitPrice: averagePrice, grossAmount: parseFinancialNumber(values.get("gross_amount"), decimalSeparator),
     fees: parseFinancialNumber(values.get("fees"), decimalSeparator), taxes: parseFinancialNumber(values.get("taxes"), decimalSeparator),
     netAmount: parseFinancialNumber(values.get("net_amount"), decimalSeparator), bookValue,

@@ -14,7 +14,7 @@ export function fileHash(bytes: Uint8Array) { return createHash("sha256").update
 export function sanitizeCellValue(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.slice(0, IMPORT_LIMITS.maxCellCharacters);
-  return /^[=+\-@]/.test(trimmed.trimStart()) ? `'${trimmed}` : trimmed;
+  return /^(?:[=+@]|-(?!\d))/.test(trimmed.trimStart()) ? `'${trimmed}` : trimmed;
 }
 export function maskSensitiveText(value: string) {
   return value.replace(/\b\d{7,19}\b/g, (match) => `${"*".repeat(Math.max(0, match.length - 4))}${match.slice(-4)}`);
