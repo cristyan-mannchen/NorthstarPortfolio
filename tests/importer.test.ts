@@ -8,6 +8,7 @@ import { detectNumberFormat, normalizeRow, normalizeTransactionType, parseFinanc
 import { assertSafeUpload, sanitizeCellValue, structuralSignature } from "../lib/importer/security";
 import { validateRecord } from "../lib/importer/validation";
 import { headerSimilarity, rebindMappings } from "../lib/importer/profiles";
+import { shouldImportRecord } from "../lib/importer/analyze";
 import type { UploadedInvestmentFile } from "../lib/importer/types";
 
 function textFile(text: string, filename = "activity.csv"): UploadedInvestmentFile {
@@ -62,6 +63,7 @@ test("normalizes aliases, holdings, dates, and derived average cost", async () =
   assert.equal(normalizeTransactionType("Reinvested Dividend").type, "reinvested_distribution");
   assert.equal(parseFinancialDate("03/04/2026").ambiguous, true);
   assert.equal(parseFinancialDate("13/04/2026").value, "2026-04-13");
+  assert.equal(parseFinancialDate("02-Jul-26").value, "2026-07-02");
   const dataset = await new DelimitedTextParser().parse(textFile("Ticker,Security Name,Units,Book Value,Currency,Date\nRY,Royal Bank,10,1000,CAD,2026-07-13\n"));
   const [analysis] = analyzeStructure(dataset);
   const record = normalizeRow(analysis.sheet.rows[1], analysis.schema.mappings, "positions", analysis.sheet.name);
@@ -69,6 +71,23 @@ test("normalizes aliases, holdings, dates, and derived average cost", async () =
   assert.equal(record.unitPrice, 100);
   assert.ok(record.tradeDate);
   assert.deepEqual(record.derivedFields, ["unit_price_from_book_value"]);
+});
+
+test("uses settlement date as the effective transaction date", async () => {
+  const dataset = await new DelimitedTextParser().parse(textFile("Date,Activity,Symbol,Quantity,Price,Settlement Date,Currency\n29-Jun-26,Buy,RBF902,5.43,48.8213,30-Jun-26,CAD\n"));
+  const [analysis] = analyzeStructure(dataset);
+  const record = normalizeRow(analysis.sheet.rows[1], analysis.schema.mappings, "transactions", analysis.sheet.name);
+  assert.equal(record.tradeDate, "2026-06-30");
+  assert.equal(record.settlementDate, "2026-06-30");
+  assert.ok(record.derivedFields.includes("trade_date_from_settlement_date"));
+});
+
+test("imports only buy and dividend transaction activities", () => {
+  assert.equal(shouldImportRecord({ datasetType: "transactions", transactionType: "buy" }), true);
+  assert.equal(shouldImportRecord({ datasetType: "transactions", transactionType: "dividend" }), true);
+  assert.equal(shouldImportRecord({ datasetType: "transactions", transactionType: "deposit" }), false);
+  assert.equal(shouldImportRecord({ datasetType: "transactions", transactionType: "sell" }), false);
+  assert.equal(shouldImportRecord({ datasetType: "transactions", transactionType: "fee" }), false);
 });
 
 test("validates reconciliation and required fields deterministically", () => {

@@ -35,6 +35,19 @@ export function parseFinancialDate(value: unknown, preference?: "mdy" | "dmy") {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return { value: value.toISOString().slice(0, 10), confidence: 1 };
   const raw = String(value ?? "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { value: raw, confidence: 1 };
+  const namedMonthMatch = /^(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s](\d{2,4})$/.exec(raw);
+  if (namedMonthMatch) {
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const day = Number(namedMonthMatch[1]);
+    const month = monthNames.indexOf(namedMonthMatch[2].slice(0, 3).toLowerCase()) + 1;
+    const yearPart = namedMonthMatch[3];
+    const year = Number(yearPart) + (yearPart.length === 2 ? 2000 : 0);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (month > 0 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+      return { value: date.toISOString().slice(0, 10), confidence: 0.98 };
+    }
+    return { value: undefined, confidence: 0 };
+  }
   const match = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$/.exec(raw);
   if (!match) return { value: undefined, confidence: 0 };
   const first = Number(match[1]), second = Number(match[2]), year = Number(match[3]) + (match[3].length === 2 ? 2000 : 0);
@@ -52,12 +65,16 @@ export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetT
   const bookValue = parseFinancialNumber(values.get("book_value"), decimalSeparator);
   const unitPrice = parseFinancialNumber(values.get("unit_price"), decimalSeparator);
   const transaction = normalizeTransactionType(values.get("transaction_type"));
-  const date = parseFinancialDate(values.get("trade_date"));
+  const statedTradeDate = parseFinancialDate(values.get("trade_date"));
+  const statedSettlementDate = parseFinancialDate(values.get("settlement_date"));
   const derivedFields: string[] = [];
   let averagePrice = unitPrice;
   if (averagePrice == null && bookValue != null && quantity) { averagePrice = bookValue / quantity; derivedFields.push("unit_price_from_book_value"); }
-  const tradeDate = date.value ?? (datasetType === "positions" ? new Date().toISOString().slice(0, 10) : undefined);
-  if (!date.value && datasetType === "positions") derivedFields.push("trade_date_from_import_date");
+  // Performance is recognized on settlement. If both dates are present, the
+  // settlement date intentionally becomes the effective transaction date.
+  const tradeDate = statedSettlementDate.value ?? statedTradeDate.value ?? (datasetType === "positions" ? new Date().toISOString().slice(0, 10) : undefined);
+  if (statedSettlementDate.value) derivedFields.push("trade_date_from_settlement_date");
+  if (!statedSettlementDate.value && !statedTradeDate.value && datasetType === "positions") derivedFields.push("trade_date_from_import_date");
   return {
     sourceWorksheet: worksheet, sourceRowNumber: row.sourceRowNumber, datasetType,
     importMode: datasetType === "positions" ? "opening_position" : "historical_transaction",
@@ -66,7 +83,7 @@ export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetT
     instrumentType: String(values.get("instrument_type") ?? "").trim() || undefined,
     currency: String(values.get("currency") ?? "").trim().toUpperCase() || undefined,
     transactionType: datasetType === "positions" ? "opening_position" : transaction.type,
-    tradeDate, settlementDate: parseFinancialDate(values.get("settlement_date")).value,
+    tradeDate, settlementDate: statedSettlementDate.value,
     quantity, unitPrice: averagePrice, grossAmount: parseFinancialNumber(values.get("gross_amount"), decimalSeparator),
     fees: parseFinancialNumber(values.get("fees"), decimalSeparator), taxes: parseFinancialNumber(values.get("taxes"), decimalSeparator),
     netAmount: parseFinancialNumber(values.get("net_amount"), decimalSeparator), bookValue,

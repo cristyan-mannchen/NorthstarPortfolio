@@ -6,6 +6,10 @@ import type { ParsedDataset } from "./types";
 import { validateRecord } from "./validation";
 import { findImportProfile, rebindMappings, worksheetHeaders } from "./profiles";
 
+export function shouldImportRecord(record: { datasetType: string; transactionType?: string }) {
+  return record.datasetType !== "transactions" || record.transactionType === "buy" || record.transactionType === "dividend";
+}
+
 const INSTITUTION_CLUES: Record<string, string[]> = {
   "RBC Direct Investing": ["rbc direct investing", "royal bank", "rbcdirectinvesting"],
   "TD Direct Investing": ["td direct investing", "webbroker"], Wealthsimple: ["wealthsimple"],
@@ -40,7 +44,13 @@ export async function analyzeParsedDataset(dataset: ParsedDataset, filename: str
   const dataRows = selected.sheet.rows.filter((row) => row.sourceRowNumber >= selected.schema.dataStartRow && row.rowType === "data");
   const numericSamples = dataRows.slice(0, 100).flatMap((row) => row.cells.map((cell) => String(cell.formattedValue ?? "")).filter((value) => /\d[.,]\d/.test(value)));
   const numberFormat = detectNumberFormat(numericSamples);
-  const records = dataRows.map((row) => validateRecord(normalizeRow(row, selected.schema.mappings, selected.schema.datasetType, selected.sheet.name, numberFormat.decimalSeparator), selected.schema.overallConfidence, portfolioId));
+  const normalizedRecords = dataRows.map((row) => normalizeRow(row, selected.schema.mappings, selected.schema.datasetType, selected.sheet.name, numberFormat.decimalSeparator));
+  // Northstar's performance model currently needs acquisition and income
+  // events only. Cash deposits, fees, transfers, sales, and other activities
+  // are deliberately excluded before validation and staging.
+  const records = normalizedRecords
+    .filter(shouldImportRecord)
+    .map((record) => validateRecord(record, selected.schema.overallConfidence, portfolioId));
 
   const symbols = [...new Set(records.flatMap((record) => record.symbol ? [record.symbol] : []))];
   const instruments = symbols.length ? await db.from("instruments").select("id,symbol,name,currency,asset_type").in("symbol", symbols) : { data: [], error: null };
