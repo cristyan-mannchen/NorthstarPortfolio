@@ -2,6 +2,7 @@
   "name": "northstar-portfolio-tracker",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.15.0",
   "engines": {
     "node": ">=22.13.0"
   },
