@@ -27,7 +27,7 @@ export function detectInstitution(filename: string, dataset: ParsedDataset) {
   return best ? { name: best.name, confidence: Math.min(0.65 + best.hits * 0.12, 0.98) } : { name: undefined, confidence: 0 };
 }
 
-export async function analyzeParsedDataset(dataset: ParsedDataset, filename: string, portfolioId: string, db: SupabaseClient) {
+export async function analyzeParsedDataset(dataset: ParsedDataset, filename: string, portfolioId: string, db: SupabaseClient, defaultCurrency?: string) {
   const analyses = analyzeStructure(dataset);
   const selected = analyses.find((analysis) => !analysis.sheet.hidden && analysis.schema.datasetType !== "unknown") ?? analyses[0];
   if (!selected || selected.schema.overallConfidence < 0.35) throw new Error("No relevant financial dataset could be identified.");
@@ -44,7 +44,7 @@ export async function analyzeParsedDataset(dataset: ParsedDataset, filename: str
   const dataRows = selected.sheet.rows.filter((row) => row.sourceRowNumber >= selected.schema.dataStartRow && row.rowType === "data");
   const numericSamples = dataRows.slice(0, 100).flatMap((row) => row.cells.map((cell) => String(cell.formattedValue ?? "")).filter((value) => /\d[.,]\d/.test(value)));
   const numberFormat = detectNumberFormat(numericSamples);
-  const normalizedRecords = dataRows.map((row) => normalizeRow(row, selected.schema.mappings, selected.schema.datasetType, selected.sheet.name, numberFormat.decimalSeparator));
+  const normalizedRecords = dataRows.map((row) => normalizeRow(row, selected.schema.mappings, selected.schema.datasetType, selected.sheet.name, numberFormat.decimalSeparator, defaultCurrency));
   // Northstar's performance model currently needs acquisition and income
   // events only. Cash deposits, fees, transfers, sales, and other activities
   // are deliberately excluded before validation and staging.
