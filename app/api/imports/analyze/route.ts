@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const parsed = requestSchema.safeParse({ portfolioId: form.get("portfolioId") });
     const upload = form.get("file");
     if (!parsed.success || !(upload instanceof File)) return NextResponse.json({ error: "Choose a portfolio and a file." }, { status: 400 });
-    const portfolio = await db.from("portfolios").select("id").eq("id", parsed.data.portfolioId).eq("owner_id", user.id).maybeSingle();
+    const portfolio = await db.from("portfolios").select("id,base_currency").eq("id", parsed.data.portfolioId).eq("owner_id", user.id).maybeSingle();
     if (!portfolio.data) return NextResponse.json({ error: "Portfolio not found." }, { status: 404 });
     if (upload.size > IMPORT_LIMITS.maxFileBytes) return NextResponse.json({ error: "The file exceeds the 10 MB import limit." }, { status: 413 });
     const bytes = new Uint8Array(await upload.arrayBuffer());
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     }
 
     const dataset = await parseInvestmentFile(file);
-    const analysis = await analyzeParsedDataset(dataset, upload.name, portfolio.data.id, db);
+    const analysis = await analyzeParsedDataset(dataset, upload.name, portfolio.data.id, db, portfolio.data.base_currency);
     const status = analysis.counts.invalidRows > 0 || confidenceBand(analysis.overallConfidence) !== "high" ? "awaiting_review" : "ready";
     const batch = await db.from("import_batches").insert({
       user_id: user.id, portfolio_id: portfolio.data.id, filename: upload.name.slice(0, 255), file_type: dataset.fileType,

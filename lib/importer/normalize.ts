@@ -1,7 +1,7 @@
 import type { ColumnMapping, DatasetType, NormalizedImportRecord, NormalizedTransactionType, ParsedRow } from "./types";
 
 const TRANSACTION_ALIASES: Record<NormalizedTransactionType, string[]> = {
-  buy: ["buy", "bought", "purchase", "subscription", "contribution purchase"], sell: ["sell", "sold", "sale", "redemption"],
+  buy: ["buy", "bought", "purchase", "investment", "subscription", "contribution purchase"], sell: ["sell", "sold", "sale", "redemption"],
   distribution: ["distribution"], dividend: ["dividend", "cash dividend"], interest: ["interest"],
   reinvested_distribution: ["reinvestment", "reinvested dividend", "distribution reinvestment"], fee: ["fee", "management fee", "commission"],
   tax: ["tax", "withholding tax"], deposit: ["deposit", "cash contribution"], withdrawal: ["withdrawal"],
@@ -71,7 +71,7 @@ export function parseFinancialDate(value: unknown, preference?: "mdy" | "dmy") {
   return { value: date.toISOString().slice(0, 10), confidence: first > 12 || second > 12 ? 0.95 : 0.75 };
 }
 
-export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetType: DatasetType, worksheet: string, decimalSeparator: "." | "," = "."): NormalizedImportRecord {
+export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetType: DatasetType, worksheet: string, decimalSeparator: "." | "," = ".", defaultCurrency?: string): NormalizedImportRecord {
   const values = new Map(mappings.map((mapping) => [mapping.targetField, row.cells[mapping.sourceColumnIndex]?.rawValue]));
   const quantity = parseFinancialNumber(values.get("quantity"), decimalSeparator);
   const bookValue = parseFinancialNumber(values.get("book_value"), decimalSeparator);
@@ -87,13 +87,16 @@ export function normalizeRow(row: ParsedRow, mappings: ColumnMapping[], datasetT
   const tradeDate = statedSettlementDate.value ?? statedTradeDate.value ?? (datasetType === "positions" ? new Date().toISOString().slice(0, 10) : undefined);
   if (statedSettlementDate.value) derivedFields.push("trade_date_from_settlement_date");
   if (!statedSettlementDate.value && !statedTradeDate.value && datasetType === "positions") derivedFields.push("trade_date_from_import_date");
+  const sourceCurrency = String(values.get("currency") ?? "").trim().toUpperCase();
+  const currency = sourceCurrency || defaultCurrency?.trim().toUpperCase() || undefined;
+  if (!sourceCurrency && currency) derivedFields.push("currency_from_portfolio");
   return {
     sourceWorksheet: worksheet, sourceRowNumber: row.sourceRowNumber, datasetType,
     importMode: datasetType === "positions" ? "opening_position" : "historical_transaction",
     symbol: String(values.get("symbol") ?? "").trim().toUpperCase() || undefined,
     instrumentName: String(values.get("instrument_name") ?? "").trim() || undefined,
     instrumentType: String(values.get("instrument_type") ?? "").trim() || undefined,
-    currency: String(values.get("currency") ?? "").trim().toUpperCase() || undefined,
+    currency,
     transactionType: datasetType === "positions" ? "opening_position" : transaction.type,
     tradeDate, settlementDate: statedSettlementDate.value,
     quantity, unitPrice: averagePrice, grossAmount: parseFinancialNumber(values.get("gross_amount"), decimalSeparator),

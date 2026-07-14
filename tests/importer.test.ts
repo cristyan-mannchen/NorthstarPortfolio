@@ -113,6 +113,23 @@ test("normalizes the RBC Activity Export CSV layout", async () => {
   assert.equal(records[1].netAmount, -265.09);
 });
 
+test("treats Investment rows as buys and uses the portfolio currency", async () => {
+  const csv = `Date,Type,Account,Symbol,Symbol Description,Qty,Price,Fees,Total,Net\n26-Oct-2023,Investment,RBC Strabag,RBF902,RBC U.S. DIVIDEND FUND CL F (902),40.51,36.64,14.83,1499,1484\n`;
+  const dataset = await new DelimitedTextParser().parse(textFile(csv, "investments.csv"));
+  const [analysis] = analyzeStructure(dataset);
+  const record = normalizeRow(analysis.sheet.rows[1], analysis.schema.mappings, "transactions", analysis.sheet.name, ".", "CAD");
+  assert.equal(record.transactionType, "buy");
+  assert.equal(shouldImportRecord(record), true);
+  assert.equal(record.tradeDate, "2023-10-26");
+  assert.equal(record.symbol, "RBF902");
+  assert.equal(record.quantity, 40.51);
+  assert.equal(record.unitPrice, 36.64);
+  assert.equal(record.fees, 14.83);
+  assert.equal(record.netAmount, 1484);
+  assert.equal(record.currency, "CAD");
+  assert.ok(record.derivedFields.includes("currency_from_portfolio"));
+});
+
 test("validates reconciliation and required fields deterministically", () => {
   const record = validateRecord({ sourceWorksheet: "Data", sourceRowNumber: 2, datasetType: "transactions", importMode: "historical_transaction", symbol: "RY", transactionType: "buy", tradeDate: "2026-07-13", quantity: 10, unitPrice: 100, grossAmount: 900, currency: "CAD", derivedFields: [], rawData: {} }, 0.95, "portfolio");
   assert.ok(record.validationWarnings.some((warning) => warning.includes("reconcile")));
