@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ArrowUpRight, Bell, ChevronDown, CircleHelp, Download,
   LayoutDashboard, Moon, MoreHorizontal, PieChart, Plus, RefreshCw, Search,
-  Settings, ShieldCheck, SlidersHorizontal, Sparkles, Sun, WalletCards, X,
+  Settings, ShieldCheck, SlidersHorizontal, Sparkles, Sun, UploadCloud, WalletCards, X,
 } from "lucide-react";
 import { addPosition, signOut } from "@/app/actions/portfolio";
 
@@ -80,7 +81,7 @@ export default function Dashboard({ portfolioId, portfolioName, displayName, ema
         <header><div className="mobile-brand"><div className="brand-mark"><span/><span/><span/></div><strong>Northstar</strong></div><div className="search"><Search size={17}/><input aria-label="Search investments" placeholder="Search investments..."/><kbd>⌘ K</kbd></div><div className="header-actions"><button aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun size={18}/> : <Moon size={18}/>}</button><button aria-label="Notifications" className="notification"><Bell size={18}/><i/></button><button className="add" onClick={() => setModal(true)}><Plus size={17}/>Add investment</button></div></header>
 
         <div className="content">
-          <div className="title-row"><div><p className="eyebrow">PORTFOLIO OVERVIEW</p><h1>{view === "Overview" ? `Welcome, ${firstName}.` : view}</h1><p>Here’s how your investments are performing.</p></div><div className="as-of"><span className="pulse"/>{updatedAt ? `Market data as of ${new Date(updatedAt).toLocaleDateString("en-CA")}` : "No market prices yet"}<button onClick={refresh} aria-label="Refresh prices"><RefreshCw size={15} className={refreshing ? "spin" : ""}/></button></div></div>
+          <div className="title-row"><div><p className="eyebrow">PORTFOLIO OVERVIEW</p><h1>{view === "Overview" ? `Welcome, ${firstName}.` : view}</h1><p>Here’s how your investments are performing.</p></div><div className="title-actions"><Link className="import-link" href="/imports"><UploadCloud size={15}/>Import file</Link><div className="as-of"><span className="pulse"/>{updatedAt ? `Market data as of ${new Date(updatedAt).toLocaleDateString("en-CA")}` : "No market prices yet"}<button onClick={refresh} aria-label="Refresh prices"><RefreshCw size={15} className={refreshing ? "spin" : ""}/></button></div></div></div>
 
           <div className="metric-grid">
             <article className="metric featured"><div className="metric-top"><span>Total portfolio value</span><WalletCards size={18}/></div><strong>{money(total)}</strong><div className={`metric-change ${gain >= 0 ? "positive" : "negative"}`}><ArrowUpRight size={15}/><b>{gainPercent.toFixed(1)}%</b><span>{gain >= 0 ? "+" : ""}{money(gain, 2)} all time</span></div><div className="micro-bars">{[30,38,31,47,54,48,65,61,70,83,74,91].map((h,i)=><i key={i} style={{height:`${h}%`}}/>)}</div></article>

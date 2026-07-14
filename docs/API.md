@@ -1,5 +1,14 @@
 # API
 
+## Intelligent imports
+
+- `POST /api/imports/analyze` — authenticated multipart request with `portfolioId` and `file`; safely parses and stages a batch.
+- `GET /api/imports/:batchId` — returns the authenticated owner’s batch and normalized review rows.
+- `PATCH /api/imports/:batchId/rows/:rowId` — resolves or rejects a staged row.
+- `POST /api/imports/:batchId/confirm` — calls the atomic, idempotent database confirmation function.
+
+Uploads are limited to 10 MB. Unsupported, malformed, encrypted, low-confidence, and unauthorized requests return actionable JSON errors.
+
 ## `GET /api/prices/:symbol`
 
 Returns the latest validated quote from the configured provider. RBC fund codes

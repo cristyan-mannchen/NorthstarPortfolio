@@ -30,3 +30,22 @@ test("dashboard no longer ships the illustrative user and holdings", async () =>
   assert.doesNotMatch(dashboard, /Marc Gauthier|marc@example\.com/);
   assert.match(dashboard, /positions: DashboardPosition\[\]/);
 });
+
+test("import schema is RLS protected and confirmation is atomic and idempotent", async () => {
+  const foundation = await readFile(new URL("../supabase/migrations/202607140001_intelligent_import_foundation.sql", import.meta.url), "utf8");
+  const execution = await readFile(new URL("../supabase/migrations/202607140002_atomic_import_execution.sql", import.meta.url), "utf8");
+  assert.match(foundation, /alter table public\.import_batches enable row level security/);
+  assert.match(foundation, /unique\(user_id, portfolio_id, file_hash\)/);
+  assert.match(execution, /for update/);
+  assert.match(execution, /if v_batch\.status in \('completed','completed_with_warnings'\)/);
+  assert.match(execution, /auth\.uid\(\)/);
+});
+
+test("import routes authenticate and verify portfolio ownership", async () => {
+  const analyze = await readFile(new URL("../app/api/imports/analyze/route.ts", import.meta.url), "utf8");
+  const confirm = await readFile(new URL("../app/api/imports/[batchId]/confirm/route.ts", import.meta.url), "utf8");
+  assert.match(analyze, /auth\.getUser/);
+  assert.match(analyze, /eq\("owner_id", user\.id\)/);
+  assert.match(confirm, /auth\.getUser/);
+  assert.match(confirm, /confirm_import_batch/);
+});

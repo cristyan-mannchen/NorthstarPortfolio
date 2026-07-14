@@ -1,0 +1,7 @@
+Report,Example holdings
+Account,****1234
+
+Ticker,Security Name,Units,Book Value,Market Value,Currency
+RBF5380,PH&N U.S. Multi-Style All-Cap Equity Fund,100,2500.00,2875.00,CAD
+VFV,Vanguard S&P 500 Index ETF,25,3000.00,3550.00,CAD
+Total,,,5500.00,6425.00,CAD
