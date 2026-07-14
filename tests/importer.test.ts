@@ -10,6 +10,7 @@ import { validateRecord } from "../lib/importer/validation";
 import { headerSimilarity, rebindMappings } from "../lib/importer/profiles";
 import { shouldImportRecord } from "../lib/importer/analyze";
 import type { UploadedInvestmentFile } from "../lib/importer/types";
+import { aiInferenceResultSchema } from "../lib/importer/ai-provider";
 
 function textFile(text: string, filename = "activity.csv"): UploadedInvestmentFile {
   const bytes = new TextEncoder().encode(text);
@@ -128,6 +129,17 @@ test("treats Investment rows as buys and uses the portfolio currency", async () 
   assert.equal(record.netAmount, 1484);
   assert.equal(record.currency, "CAD");
   assert.ok(record.derivedFields.includes("currency_from_portfolio"));
+});
+
+test("accepts only schema-safe AI mappings and applies inferred transaction vocabulary", () => {
+  const inferred = aiInferenceResultSchema.parse({
+    datasetType: "transactions", headerRow: 1, dataStartRow: 2,
+    mappings: [{ sourceColumn: "Operation", targetField: "transaction_type", confidence: 0.91, reasoningCode: "AI_SEMANTIC_MATCH" }],
+    transactionTypeRules: [{ sourceTerms: ["Acquisition"], normalizedType: "buy", confidence: 0.9 }],
+    warnings: [], overallConfidence: 0.91,
+  });
+  assert.equal(normalizeTransactionType("Acquisition", inferred.transactionTypeRules).type, "buy");
+  assert.throws(() => aiInferenceResultSchema.parse({ ...inferred, mappings: [{ sourceColumn: "X", targetField: "secret", confidence: 1, reasoningCode: "BAD" }] }));
 });
 
 test("validates reconciliation and required fields deterministically", () => {

@@ -1,13 +1,37 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { analyzeStructure } from "./inference";
-import { detectNumberFormat, normalizeRow } from "./normalize";
+import { detectNumberFormat, normalizeRow, normalizeTransactionType } from "./normalize";
 import { maskSensitiveText, structuralSignature } from "./security";
 import type { ParsedDataset } from "./types";
 import { validateRecord } from "./validation";
 import { findImportProfile, rebindMappings, worksheetHeaders } from "./profiles";
+import { configuredInferenceProvider, validateAiInference } from "./ai-provider";
 
 export function shouldImportRecord(record: { datasetType: string; transactionType?: string }) {
   return record.datasetType !== "transactions" || record.transactionType === "buy" || record.transactionType === "dividend";
+}
+
+function maskedAiValue(value: unknown, primitiveType?: string, header = "") {
+  if (value == null || value === "") return null;
+  if (primitiveType === "number" || typeof value === "number") return "<number>";
+  if (primitiveType === "date" || value instanceof Date) return "<date>";
+  if (/account|name|description|memo|note|symbol|reference/i.test(header)) return "<text>";
+  const text = maskSensitiveText(String(value)).replace(/\b\d+(?:[.,]\d+)?\b/g, "<number>").slice(0, 60);
+  return text || null;
+}
+
+function aiRequestFor(sheet: ParsedDataset["worksheets"][number], headers: string[], dataStartRow: number) {
+  const dataRows = sheet.rows.filter((row) => row.sourceRowNumber >= dataStartRow && row.rowType === "data").slice(0, 8);
+  const columnCount = headers.length;
+  return {
+    worksheetNames: [sheet.name], maskedHeaders: [headers.map((header) => maskSensitiveText(header).slice(0, 100))],
+    representativeRows: dataRows.map((row) => Array.from({ length: columnCount }, (_, index) => maskedAiValue(row.cells[index]?.formattedValue ?? row.cells[index]?.rawValue, row.cells[index]?.inferredPrimitiveType, headers[index]))),
+    valueTypeSummaries: [Array.from({ length: columnCount }, (_, index) => {
+      const counts = new Map<string, number>();
+      for (const row of dataRows) { const type = row.cells[index]?.inferredPrimitiveType ?? "empty"; counts.set(type, (counts.get(type) ?? 0) + 1); }
+      return [...counts.entries()].map(([type, count]) => `${type}:${count}`).join(",");
+    })],
+  };
 }
 
 const INSTITUTION_CLUES: Record<string, string[]> = {
@@ -30,7 +54,26 @@ export function detectInstitution(filename: string, dataset: ParsedDataset) {
 export async function analyzeParsedDataset(dataset: ParsedDataset, filename: string, portfolioId: string, db: SupabaseClient, defaultCurrency?: string) {
   const analyses = analyzeStructure(dataset);
   const selected = analyses.find((analysis) => !analysis.sheet.hidden && analysis.schema.datasetType !== "unknown") ?? analyses[0];
-  if (!selected || selected.schema.overallConfidence < 0.35) throw new Error("No relevant financial dataset could be identified.");
+  if (!selected) throw new Error("No relevant financial dataset could be identified.");
+  const aiProvider = configuredInferenceProvider();
+  const typeMapping = selected.schema.mappings.find((mapping) => mapping.targetField === "transaction_type");
+  const hasUnknownTransactionTerms = Boolean(typeMapping && selected.sheet.rows
+    .filter((row) => row.sourceRowNumber >= selected.schema.dataStartRow && row.rowType === "data")
+    .slice(0, 20)
+    .some((row) => normalizeTransactionType(row.cells[typeMapping.sourceColumnIndex]?.rawValue).type === "other"));
+  if (aiProvider && (selected.schema.overallConfidence < 0.9 || hasUnknownTransactionTerms)) {
+    const currentHeaders = worksheetHeaders(selected.sheet, selected.schema.headerRow);
+    try {
+      const inferred = await validateAiInference(aiProvider, aiRequestFor(selected.sheet, currentHeaders, selected.schema.dataStartRow));
+      const rebound = rebindMappings(inferred.mappings.map((mapping) => ({ ...mapping, sourceColumnIndex: 0 })), currentHeaders);
+      if (rebound.length >= 2 && inferred.overallConfidence > selected.schema.overallConfidence) {
+        selected.schema = { ...selected.schema, datasetType: inferred.datasetType, mappings: rebound, transactionTypeRules: inferred.transactionTypeRules, warnings: [...selected.schema.warnings, ...inferred.warnings, "AI-assisted schema inference was applied; deterministic validation remains required."], overallConfidence: Math.min(inferred.overallConfidence, 0.94) };
+      }
+    } catch {
+      selected.schema.warnings.push("AI assistance was unavailable; deterministic inference was used.");
+    }
+  }
+  if (selected.schema.overallConfidence < 0.35) throw new Error("No relevant financial dataset could be identified.");
   const fileSignature = structuralSignature(dataset);
   const headers = worksheetHeaders(selected.sheet, selected.schema.headerRow);
   const profileMatch = await findImportProfile(db, fileSignature, dataset.fileType, headers);
@@ -44,7 +87,7 @@ export async function analyzeParsedDataset(dataset: ParsedDataset, filename: str
   const dataRows = selected.sheet.rows.filter((row) => row.sourceRowNumber >= selected.schema.dataStartRow && row.rowType === "data");
   const numericSamples = dataRows.slice(0, 100).flatMap((row) => row.cells.map((cell) => String(cell.formattedValue ?? "")).filter((value) => /\d[.,]\d/.test(value)));
   const numberFormat = detectNumberFormat(numericSamples);
-  const normalizedRecords = dataRows.map((row) => normalizeRow(row, selected.schema.mappings, selected.schema.datasetType, selected.sheet.name, numberFormat.decimalSeparator, defaultCurrency));
+  const normalizedRecords = dataRows.map((row) => normalizeRow(row, selected.schema.mappings, selected.schema.datasetType, selected.sheet.name, numberFormat.decimalSeparator, defaultCurrency, selected.schema.transactionTypeRules));
   // Northstar's performance model currently needs acquisition and income
   // events only. Cash deposits, fees, transfers, sales, and other activities
   // are deliberately excluded before validation and staging.

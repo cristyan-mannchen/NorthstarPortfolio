@@ -25,6 +25,10 @@ For transaction exports, Northstar stages only `buy` and `dividend` activities. 
 
 Thresholds are exported as `CONFIDENCE_THRESHOLDS` in `lib/importer/types.ts`.
 
+## Optional AI assistance
+
+Set `GROQ_API_KEY` in the server environment to enable schema and transaction-vocabulary inference for unfamiliar layouts. The free-tier integration sends masked structural samples only, uses strict structured output, and remains advisory. Northstar continues to work without AI and always applies deterministic validation before a row can be confirmed.
+
 ## Current limits
 
 Uploads are 10 MB and 20,000 rows. Ambiguous dates are rejected rather than guessed. The first release can skip invalid rows but does not yet offer every possible inline mapping correction. PDF/OFX/QFX and queue-backed processing remain extension points.
